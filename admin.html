@@ -415,14 +415,58 @@
         @media (max-width: 1400px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .detail-grid { grid-template-columns: repeat(2, 1fr); }
+            .admin-header { padding: 18px 30px; }
+            .admin-actions { flex-wrap: wrap; gap: 16px; }
+        }
+        @media (max-width: 1100px) {
+            .admin-body { flex-direction: column; padding-top: 120px; }
+            .admin-sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 2px solid rgba(139, 0, 0, 0.2);
+            }
+            .admin-content { margin-left: 0; width: 100%; padding: 30px 24px 40px; }
+            .chat-interface { grid-template-columns: 1fr; width: 100%; min-width: auto; height: auto; }
+            .chat-main-area { min-width: 0; }
+            .chat-messages-area { padding: 24px; max-height: none; }
+            .chat-input-bar { padding: 22px; flex-wrap: wrap; gap: 14px; }
+            .card-header { flex-direction: column; align-items: flex-start; gap: 20px; }
+            .data-table { min-width: 0; }
+            .data-table th, .data-table td { padding: 16px 18px; }
+            .modal-content { padding: 40px; }
         }
         @media (max-width: 968px) {
             .admin-sidebar { display: none; }
-            .admin-content { margin-left: 0; width: 100%; padding: 30px; }
-            .chat-interface { grid-template-columns: 1fr; height: auto; }
-            .stats-grid { grid-template-columns: 1fr; }
+            .admin-content { padding: 24px 18px 32px; }
+            .admin-header { padding: 16px 18px; }
+            .admin-brand h2 { font-size: 24px; }
+            .admin-badge, .live-indicator, .logout-btn { font-size: 11px; padding: 8px 14px; }
+            .sidebar-menu a { padding: 14px 16px; font-size: 14px; }
+            .page-title { font-size: 34px; margin-bottom: 30px; }
+            .stats-grid { grid-template-columns: 1fr; gap: 20px; }
             .detail-grid { grid-template-columns: 1fr; }
-            .chat-message-image { max-width: 200px; max-height: 200px; }
+            .chat-interface { border-radius: 20px; }
+            .chat-input-bar { flex-direction: column; align-items: stretch; }
+            .chat-input-bar button, .chat-input-bar input { width: 100%; }
+            .chat-message-image { max-width: 100%; height: auto; }
+            .data-table-wrapper { overflow-x: auto; }
+            .data-table th, .data-table td { padding: 14px 12px; font-size: 13px; }
+            .visitor-cell { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .modal-content { padding: 30px; }
+            .member-detail-header { flex-direction: column; gap: 20px; }
+            .notification { top: 90px; right: 16px; left: 16px; max-width: calc(100% - 32px); }
+        }
+        @media (max-width: 640px) {
+            .admin-header { flex-direction: column; align-items: stretch; gap: 14px; }
+            .admin-actions { justify-content: space-between; width: 100%; }
+            .admin-user { width: 100%; justify-content: space-between; }
+            .chat-messages-area { padding: 18px; }
+            .chat-input-bar { padding: 18px; }
+            .data-table th, .data-table td { padding: 12px 10px; }
+            .member-detail-header { padding-bottom: 20px; }
+            .card-header { padding: 24px; }
         }
     </style>
 </head>
@@ -774,6 +818,46 @@
             return Math.min(score, 5);
         }
 
+        async function apiGet(path) {
+            try {
+                const response = await fetch(path, { method: 'GET' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (error) {
+                console.warn('API GET failed:', error);
+                return null;
+            }
+        }
+
+        async function apiPost(path, data) {
+            try {
+                const response = await fetch(path, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (error) {
+                console.warn('API POST failed:', error);
+                return null;
+            }
+        }
+
+        async function fetchVisitorsFromServer() {
+            return await apiGet('/api/visitors');
+        }
+
+        async function updateVisitorOnServer(visitor) {
+            if (!visitor || !visitor.id) return;
+            await apiPost('/api/visitor', visitor);
+        }
+
+        async function addVisitorMessageToServer(visitorId, message) {
+            if (!visitorId || !message) return;
+            await apiPost(`/api/visitor/${visitorId}/message`, message);
+        }
+
         function changeAdminPassword() {
             const current = document.getElementById('currentPasswordInput').value;
             const next = document.getElementById('newPasswordInput').value;
@@ -892,19 +976,26 @@
             document.getElementById('authScreen').style.display = 'flex';
         }
 
-        function initDashboard() { loadVisitorsFromStorage(); }
+        function initDashboard() { 
+            loadVisitorsFromStorage();
+            setInterval(loadVisitorsFromStorage, 5000);
+        }
 
-        function loadVisitorsFromStorage() {
-            const stored = localStorage.getItem('gunsnroses_visitors');
-            if (stored) {
-                visitors = JSON.parse(stored);
-                updateStats();
-                renderRecentApplications();
-                renderPending();
-                renderAllMembers();
-                renderChatUserList();
-                updateMessageBadge();
+        async function loadVisitorsFromStorage() {
+            const serverVisitors = await fetchVisitorsFromServer();
+            if (Array.isArray(serverVisitors)) {
+                visitors = serverVisitors;
+            } else {
+                const stored = localStorage.getItem('gunsnroses_visitors');
+                if (stored) visitors = JSON.parse(stored);
             }
+            saveVisitors();
+            updateStats();
+            renderRecentApplications();
+            renderPending();
+            renderAllMembers();
+            renderChatUserList();
+            updateMessageBadge();
         }
 
         function updateStats() {
@@ -1081,6 +1172,7 @@
             });
             
             saveVisitors();
+            updateVisitorOnServer(v);
             
             const codeSection = document.getElementById(`codeSection-${id}`);
             const codeDisplay = document.getElementById(`generatedCode-${id}`);
@@ -1110,6 +1202,7 @@
             if (v) {
                 v.status = 'rejected';
                 saveVisitors();
+                updateVisitorOnServer(v);
                 renderPending();
                 renderAllMembers();
                 showNotification('Rejected', `${v.name}'s application rejected`);
@@ -1228,15 +1321,17 @@
             const v = visitors.find(x => x.id === selectedVisitorId);
             if (v) {
                 if (!v.messages) v.messages = [];
-                v.messages.push({
+                const message = {
                     from: 'admin',
                     text: text,
                     time: new Date().toLocaleTimeString(),
                     read: false,
                     type: 'text'
-                });
+                };
+                v.messages.push(message);
                 
                 saveVisitors();
+                addVisitorMessageToServer(selectedVisitorId, message);
                 input.value = '';
                 loadChatMessages(selectedVisitorId);
                 renderChatUserList();
@@ -1263,16 +1358,18 @@
                 
                 if (v) {
                     if (!v.messages) v.messages = [];
-                    v.messages.push({
+                    const message = {
                         from: 'admin',
                         text: 'Sent an image',
                         imageUrl: imageUrl,
                         time: new Date().toLocaleTimeString(),
                         read: false,
                         type: 'image'
-                    });
+                    };
+                    v.messages.push(message);
                     
                     saveVisitors();
+                    addVisitorMessageToServer(selectedVisitorId, message);
                     loadChatMessages(selectedVisitorId);
                     renderChatUserList();
                     
